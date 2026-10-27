@@ -234,43 +234,35 @@ export async function POST(request) {
 
     // ── 5. Registrar la reserva en Odoo vía XML-RPC (Padre-Hijo) ──────────
 
+    const createdOrderIds = [];
+
     // Obtener el ID de la lista del primer item (para vincular todo el pedido a la lista correcta)
     const firstLine = linesMap.get(items[0].registry_line_id);
     const resolvedRegistryId = (Array.isArray(firstLine.registry_id) ? firstLine.registry_id[0] : firstLine.registry_id) || listaId;
 
     // A. CREAR EL PADRE (Una sola fila por invitado)
-    let parentOrderId;
-    try {
-      parentOrderId = await createRecord(ODOO_MODELS.ORDER, {
-        registry_id: resolvedRegistryId,
-        guest_dni,
-        guest_name,
-        guest_phone,
-        guest_email: guest_email || false,
-        reservation_code: reservationCode,
-        state: 'confirmed',
-      });
-      // Guardamos el ID del padre por si necesitas retornarlo al final
-      createdOrderIds.push(parentOrderId);
-    } catch (orderErr) {
-      console.error(`[XML-RPC] Error al crear Pedido Padre en ${ODOO_MODELS.ORDER}:`, orderErr.message);
-      throw orderErr; // Detiene el proceso si el padre falla para no dejar datos huérfanos
-    }
+    const parentOrderId = await createRecord(ODOO_MODELS.ORDER, {
+      registry_id: resolvedRegistryId,
+      guest_dni,
+      guest_name,
+      guest_phone,
+      guest_email: guest_email || false,
+      reservation_code: reservationCode,
+      state: 'confirmed',
+    });
+    // Guardamos el ID del padre por si necesitas retornarlo al final
+    createdOrderIds.push(parentOrderId);
 
     // B. CREAR LOS HIJOS (Líneas de los regalos) Y ACTUALIZAR STOCK VISUAL
     for (const item of items) {
       const line = linesMap.get(item.registry_line_id);
 
-      try {
-        // Crear la línea hija conectada al Padre (order_id)
-        await createRecord('gift.registry.order.line', {
-          order_id: parentOrderId,
-          registry_line_id: item.registry_line_id,
-          reserved_qty: item.qty,
-        });
-      } catch (lineErr) {
-        console.warn(`[XML-RPC] Advertencia al crear Línea Hija para producto ${item.registry_line_id}:`, lineErr.message);
-      }
+      // Crear la línea hija conectada al Padre (order_id)
+      await createRecord('gift.registry.order.line', {
+        order_id: parentOrderId,
+        registry_line_id: item.registry_line_id,
+        reserved_qty: item.qty,
+      });
 
       // C. ACTUALIZAR LA LISTA (Restar stock visual)
       const currentGifted = Number(line.qty_gifted ?? 0);
