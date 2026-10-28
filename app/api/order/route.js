@@ -248,7 +248,7 @@ export async function POST(request) {
       guest_phone,
       guest_email: guest_email || false,
       reservation_code: reservationCode,
-      state: 'confirmed',
+      state: 'reserved',
     });
     // Guardamos el ID del padre por si necesitas retornarlo al final
     createdOrderIds.push(parentOrderId);

@@ -15,21 +15,31 @@
  * ─────────────────────────────────────────────────────────
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useToast } from './ToastProvider';
 
 const INITIAL_FORM = { dni: '', nombre: '', celular: '', correo: '' };
 
 // ── Pantalla de Éxito ─────────────────────────────────────
 
-function SuccessScreen({ reservationCode, items, onClose }) {
+function SuccessScreen({
+  reservationCode,
+  items = [],
+  totalAmount: propTotalAmount,
+  totalCount: propTotalCount,
+  onClose,
+}) {
   const [copied, setCopied] = useState(false);
   const confettiColors = ['#4285F4', '#FF7043', '#FFCA28', '#EF5350', '#43A047'];
 
-  const totalAmount = items.reduce(
+  const computedAmount = items.reduce(
     (acc, it) => acc + Number(it.precio || 0) * (it.qty || 1),
     0
   );
+  const totalAmount = propTotalAmount !== undefined ? propTotalAmount : computedAmount;
+
+  const computedCount = items.reduce((s, it) => s + (it.qty || 1), 0);
+  const totalCount = propTotalCount !== undefined ? propTotalCount : computedCount;
 
   const handleCopy = () => {
     if (reservationCode && typeof navigator !== 'undefined') {
@@ -144,9 +154,9 @@ function SuccessScreen({ reservationCode, items, onClose }) {
           <p className="text-amber-700 mt-0.5">
             Monto a pagar en caja:{' '}
             <strong className="text-gray-900">
-              S/ {totalAmount.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              S/ {Number(totalAmount).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </strong>{' '}
-            por {items.reduce((s, it) => s + it.qty, 0)} regalo(s).
+            por {totalCount} regalo(s).
           </p>
         </div>
       </div>
@@ -176,9 +186,18 @@ export default function GiftModal({
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [successCode, setSuccessCode] = useState(null);
+  const [successSummary, setSuccessSummary] = useState(null);
 
   const firstInputRef = useRef(null);
   const backdropRef = useRef(null);
+
+  const handleModalClose = useCallback(() => {
+    setSuccessCode(null);
+    setSuccessSummary(null);
+    setForm(INITIAL_FORM);
+    setErrors({});
+    onClose();
+  }, [onClose]);
 
   // Auto-focus en el primer campo al abrir
   useEffect(() => {
@@ -191,11 +210,11 @@ export default function GiftModal({
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') handleModalClose();
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, handleModalClose]);
 
   // Bloquear scroll de fondo
   useEffect(() => {
@@ -304,12 +323,19 @@ export default function GiftModal({
 
       const returnedCode = data.reservation_code || data.codigoRecojo || 'RSV-UYAY';
       setSuccessCode(returnedCode);
+      setSuccessSummary({
+        totalAmount,
+        totalCount,
+        items: [...items],
+      });
 
       // Notificar al componente padre para actualización optimista de inventario
       if (onSuccess) {
         onSuccess({
           reservation_code: returnedCode,
           reservedItems: items,
+          totalAmount,
+          totalCount,
         });
       }
     } catch (err) {
@@ -326,7 +352,7 @@ export default function GiftModal({
         ref={backdropRef}
         className="modal-backdrop"
         onClick={(e) => {
-          if (e.target === backdropRef.current) onClose();
+          if (e.target === backdropRef.current) handleModalClose();
         }}
         aria-hidden="true"
       />
@@ -347,7 +373,7 @@ export default function GiftModal({
         {/* Botón Cerrar */}
         <button
           id="btn-cerrar-checkout-modal"
-          onClick={onClose}
+          onClick={handleModalClose}
           className="absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
           aria-label="Cerrar modal"
         >
@@ -360,8 +386,10 @@ export default function GiftModal({
         {successCode ? (
           <SuccessScreen
             reservationCode={successCode}
-            items={items}
-            onClose={onClose}
+            items={successSummary?.items || items}
+            totalAmount={successSummary?.totalAmount ?? totalAmount}
+            totalCount={successSummary?.totalCount ?? totalCount}
+            onClose={handleModalClose}
           />
         ) : (
           <>
